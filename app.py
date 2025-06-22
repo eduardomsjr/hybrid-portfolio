@@ -15,6 +15,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import plotly.express as px
 import pyfolio as pf
+from pyfolio import timeseries
 
 from statsmodels.tsa.api import VAR
 from statsmodels.tsa.stattools import adfuller
@@ -358,6 +359,63 @@ def get_portfolio(E_scr, S_scr, G_scr, A, sectors=None, stocks=None):
                               margin=dict(l=0,r=0,b=0,t=60))
 
     return metrics, fig_stocks, fig_sectors, allocations
+
+# Função para sobrescrever a show_perf_stats:
+import pandas as pd
+import streamlit as st
+from pyfolio import timeseries
+
+def custom_show_perf_stats(returns, factor_returns=None, positions=None, transactions=None, turnover_denom='AGB'):
+    try:
+        stats = {}
+
+        # Cálculos        
+        stats['Retorno Anualizado'] = timeseries.annual_return(returns)
+        stats['Volatilidade Anualizada'] = timeseries.annual_volatility(returns)
+        stats['Índice de Sharpe'] = timeseries.sharpe_ratio(returns)
+        stats['Índice de Sortino'] = timeseries.sortino_ratio(returns)
+        stats['Máximo Drawdown'] = timeseries.max_drawdown(returns)
+        stats['Índice de Calmar'] = timeseries.calmar_ratio(returns)
+
+        if factor_returns is not None:
+            alpha, beta = timeseries.alpha_beta_aligned(returns, factor_returns)
+            stats['Alpha'] = alpha
+            stats['Beta'] = beta
+
+        if positions is not None and transactions is not None:
+            stats['Turnover Médio'] = timeseries.extract_turnover(
+                positions, transactions, turnover_denom=turnover_denom
+            )
+
+        # Formatação: definir quais métricas são percentuais
+        percentual_keys = [            
+            'Retorno Anualizado',
+            'Volatilidade Anualizada',
+            'Máximo Drawdown',
+            'Alpha',
+            'Turnover Médio'
+        ]
+
+        # Montar DataFrame formatado
+        formatted_stats = {}
+        for key, value in stats.items():
+            if pd.isna(value):
+                formatted_stats[key] = 'N/A'
+            elif key in percentual_keys:
+                formatted_stats[key] = f"{value * 100:.2f}%"
+            else:
+                formatted_stats[key] = f"{value:.2f}"
+
+        stats_df = pd.DataFrame.from_dict(formatted_stats, orient='index', columns=['Valor'])
+
+        st.table(stats_df)
+
+        return stats_df
+
+    except Exception as e:
+        st.error(f"Erro ao calcular estatísticas de performance: {e}")
+        return None
+
 
 # Função principal:
 def main():
@@ -722,19 +780,13 @@ def main():
             col1, col2, col3 = st.columns([1,1,1])
             with col1:
                 st.write('Métricas de risco e retorno do Benchmark')
-                table = pf.show_perf_stats(p_compare_returns['Benchmark Returns'])
-                table = table.astype(str)
-                st.table(table)
+                table = custom_show_perf_stats(p_compare_returns['Benchmark Returns'])                
             with col2:
                 st.write('Métricas de risco e retorno do Portfólio')
-                table = pf.show_perf_stats(p_compare_returns['Portfolio BL Returns'])
-                table = table.astype(str)
-                st.table(table)
+                table = custom_show_perf_stats(p_compare_returns['Portfolio BL Returns'])                
             with col3:
                 st.write('Métricas de risco e retorno do VAR')
-                table = pf.show_perf_stats(p_compare_returns['VAR Returns'])
-                table = table.astype(str)
-                st.table(table)
+                table = custom_show_perf_stats(p_compare_returns['VAR Returns'])                
             
             st.download_button(
                 label="Baixar CSV",
@@ -858,9 +910,7 @@ def main():
             col1, col2, col3 = st.columns([1,1,1])
             with col1:
                 st.write('Métricas de risco e retorno do Benchmark') 
-                table =  pf.show_perf_stats(p_compare_returns['Benchmark Returns'])
-                table = table.astype(str)
-                st.table(table)                
+                table =  custom_show_perf_stats(p_compare_returns['Benchmark Returns'])                
                 plt.close('all')
                 with contextlib.redirect_stdout(open(os.devnull, 'w')):
                     pf.create_full_tear_sheet(p_compare_returns['Benchmark Returns'])
@@ -874,9 +924,7 @@ def main():
                 plt.close('all')
             with col2:
                 st.write('Métricas de risco e retorno do Portfólio')
-                table = pf.show_perf_stats(p_compare_returns['Portfolio BL Returns'])
-                table = table.astype(str)
-                st.table(table)                
+                table = custom_show_perf_stats(p_compare_returns['Portfolio BL Returns'])
                 plt.close('all')
                 with contextlib.redirect_stdout(open(os.devnull, 'w')):
                     pf.create_full_tear_sheet(p_compare_returns['Portfolio BL Returns'], benchmark_rets=p_compare_returns['Benchmark Returns'])
@@ -890,9 +938,7 @@ def main():
                 plt.close('all')                
             with col3:
                 st.write('Métricas de risco e retorno do VAR')
-                table = pf.show_perf_stats(p_compare_returns['VAR Returns'])
-                table = table.astype(str)
-                st.table(table)                
+                table = custom_show_perf_stats(p_compare_returns['VAR Returns'])               
                 plt.close('all')
                 with contextlib.redirect_stdout(open(os.devnull, 'w')):
                     pf.create_full_tear_sheet(p_compare_returns['VAR Returns'], benchmark_rets=p_compare_returns['Benchmark Returns'])
